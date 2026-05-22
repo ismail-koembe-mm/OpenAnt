@@ -68,7 +68,18 @@ Set your Anthropic API key (required for analyze, verify, and scan):
 openant set-api-key <your-key>
 ```
 
-**The key must have access to the Claude Opus 4.6 model.** Get a key at [console.anthropic.com](https://console.anthropic.com/settings/keys).
+**For Anthropic:** The key must have access to the Claude Opus 4.6 model. Get a key at [console.anthropic.com](https://console.anthropic.com/settings/keys).
+
+**For Google Gemini:** Alternatively, set up Google Cloud credentials instead:
+
+```bash
+# Vertex AI setup
+export GOOGLE_APPLICATION_CREDENTIALS=/path/to/service-account.json
+export GOOGLE_CLOUD_PROJECT=your-project-id
+openant init <repo-url> -l python --llm-provider google
+```
+
+For detailed Gemini setup, see [GEMINI_SETUP.md](GEMINI_SETUP.md).
 
 ### Python runtime
 

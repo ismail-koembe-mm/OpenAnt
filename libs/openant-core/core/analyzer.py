@@ -27,6 +27,7 @@ from core.progress import ProgressReporter
 
 # Import existing analysis machinery
 from utilities.llm_client import AnthropicClient, get_global_tracker
+from utilities.llm_factory import create_llm_client
 from utilities.file_io import read_json, write_json
 from utilities.json_corrector import JSONCorrector
 from utilities.rate_limiter import get_rate_limiter, is_rate_limit_error, is_retryable_error
@@ -269,6 +270,8 @@ def run_analysis(
     workers: int = 8,
     checkpoint_path: str | None = None,
     backoff_seconds: int = 30,
+    llm_provider: str = "anthropic",
+    llm_config: dict | None = None,
 ) -> AnalyzeResult:
     """Run Stage 1 vulnerability detection on a dataset.
 
@@ -288,7 +291,7 @@ def run_analysis(
         app_context_path: Path to application_context.json (reduces false positives).
         repo_path: Path to the repository (for context correction).
         limit: Max number of units to analyze.
-        model: "opus" or "sonnet".
+        model: "opus" or "sonnet" (for Anthropic); "gemini-2.5-flash", etc. (for Google).
         exploitable_filter: Filter by enhancement classification. Options:
             None (default) — no filtering, analyze all units.
             "all" — keep exploitable + vulnerable_internal (recommended).
@@ -297,6 +300,8 @@ def run_analysis(
             from output_dir.
         workers: Number of parallel workers (default: 8).
         backoff_seconds: Seconds to wait on rate limit before retry (default: 30).
+        llm_provider: "anthropic" (default) or "google" for Vertex AI/Gemini.
+        llm_config: Additional config dict for provider (e.g., project_id for Google).
 
     Returns:
         AnalyzeResult with results path, metrics, and usage.
@@ -313,12 +318,18 @@ def run_analysis(
     checkpoint = StepCheckpoint("Analyze", output_dir)
     checkpoint.dir = checkpoint_path
 
-    # Select model
-    model_id = "claude-opus-4-6" if model == "opus" else "claude-sonnet-4-20250514"
-    print(f"[Analyze] Model: {model_id}", file=sys.stderr)
+    # Determine model and provider
+    llm_config = llm_config or {}
+    if llm_provider == "anthropic":
+        model_id = "claude-opus-4-6" if model == "opus" else "claude-sonnet-4-20250514"
+    else:
+        # For Google, use model parameter directly
+        model_id = model or "gemini-2.5-flash"
 
-    # Initialize client
-    client = AnthropicClient(model=model_id)
+    print(f"[Analyze] Provider: {llm_provider}, Model: {model_id}", file=sys.stderr)
+
+    # Initialize client via factory
+    client = create_llm_client(provider=llm_provider, model=model_id, **llm_config)
 
     # Initialize JSON corrector
     json_corrector = JSONCorrector(client)

@@ -16,9 +16,12 @@ import (
 
 // Config holds the persistent CLI configuration.
 type Config struct {
-	APIKey        string `json:"api_key,omitempty"`
-	DefaultModel  string `json:"default_model,omitempty"`
-	ActiveProject string `json:"active_project,omitempty"`
+	APIKey                string `json:"api_key,omitempty"`
+	DefaultModel          string `json:"default_model,omitempty"`
+	ActiveProject         string `json:"active_project,omitempty"`
+	LLMProvider           string `json:"llm_provider,omitempty"`            // "anthropic" or "google"
+	GoogleProjectID       string `json:"google_project_id,omitempty"`       // For Vertex AI
+	GoogleCredentialsFile string `json:"google_credentials_file,omitempty"` // For Vertex AI service account
 }
 
 // configDir returns the base directory for openant config files.

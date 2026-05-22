@@ -28,7 +28,20 @@ type InvokeResult struct {
 // - stdout is captured and parsed as JSON
 // - Working directory is set to the openant-core lib directory if provided
 // - If apiKey is non-empty, it is injected as ANTHROPIC_API_KEY in the subprocess
+// - For Google providers, sets GOOGLE_APPLICATION_CREDENTIALS and GOOGLE_CLOUD_PROJECT
 func Invoke(pythonPath string, args []string, workDir string, quiet bool, apiKey string) (*InvokeResult, error) {
+	return InvokeWithEnv(pythonPath, args, workDir, quiet, apiKey, nil)
+}
+
+// InvokeWithEnv runs `python -m openant <args>` with additional environment variables.
+//
+// envOverrides is a map of environment variable names to values that override defaults.
+// Common overrides:
+//   - "ANTHROPIC_API_KEY": for Anthropic provider
+//   - "GOOGLE_API_KEY": for Google Generative AI
+//   - "GOOGLE_APPLICATION_CREDENTIALS": path to service account JSON (Vertex AI)
+//   - "GOOGLE_CLOUD_PROJECT": GCP project ID (Vertex AI)
+func InvokeWithEnv(pythonPath string, args []string, workDir string, quiet bool, apiKey string, envOverrides map[string]string) (*InvokeResult, error) {
 	cmdArgs := append([]string{"-m", "openant"}, args...)
 	cmd := exec.Command(pythonPath, cmdArgs...)
 
@@ -36,12 +49,17 @@ func Invoke(pythonPath string, args []string, workDir string, quiet bool, apiKey
 		cmd.Dir = workDir
 	}
 
-	// Pass through environment (Python needs ANTHROPIC_API_KEY, etc.)
-	// If an API key is provided via flag or config, inject it into the
-	// subprocess environment so Python picks it up regardless of .env files.
+	// Pass through environment
 	cmd.Env = os.Environ()
 	if apiKey != "" {
 		cmd.Env = setEnv(cmd.Env, "ANTHROPIC_API_KEY", apiKey)
+	}
+
+	// Apply additional environment overrides
+	if envOverrides != nil {
+		for key, value := range envOverrides {
+			cmd.Env = setEnv(cmd.Env, key, value)
+		}
 	}
 
 	// Capture stdout (JSON output)

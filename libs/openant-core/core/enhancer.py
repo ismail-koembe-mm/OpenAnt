@@ -30,6 +30,8 @@ def enhance_dataset(
     model: str = "sonnet",
     workers: int = 8,
     backoff_seconds: int = 30,
+    llm_provider: str = "anthropic",
+    llm_config: dict | None = None,
 ) -> EnhanceResult:
     """Enhance a parsed dataset with security context.
 
@@ -41,9 +43,11 @@ def enhance_dataset(
         mode: "agentic" (thorough, tool-use) or "single-shot" (fast, cheaper).
         checkpoint_path: Path to save/resume checkpoint (agentic mode only).
             If None, auto-derived from output_path.
-        model: "sonnet" (default, cost-effective).
+        model: "sonnet" (default, cost-effective); or Gemini model for Google.
         workers: Number of parallel workers (default: 8).
         backoff_seconds: Seconds to wait on rate limit before retry (default: 30).
+        llm_provider: "anthropic" (default) or "google" for Vertex AI/Gemini.
+        llm_config: Additional config dict for provider (e.g., project_id for Google).
 
     Returns:
         EnhanceResult with output path, stats, and usage.
@@ -51,9 +55,14 @@ def enhance_dataset(
     # Configure global rate limiter
     configure_rate_limiter(backoff_seconds=float(backoff_seconds))
 
-    model_id = "claude-sonnet-4-20250514" if model == "sonnet" else "claude-opus-4-6"
+    llm_config = llm_config or {}
+    if llm_provider == "anthropic":
+        model_id = "claude-sonnet-4-20250514" if model == "sonnet" else "claude-opus-4-6"
+    else:
+        model_id = model or "gemini-1.5-pro"
+
     print(f"[Enhance] Mode: {mode}", file=sys.stderr)
-    print(f"[Enhance] Model: {model_id}", file=sys.stderr)
+    print(f"[Enhance] Provider: {llm_provider}, Model: {model_id}", file=sys.stderr)
 
     # Auto-derive checkpoint path for agentic mode
     if mode == "agentic" and checkpoint_path is None:
@@ -61,11 +70,12 @@ def enhance_dataset(
         checkpoint_path = os.path.join(output_dir, "enhance_checkpoints")
 
     # Import here to avoid heavy imports at module load
-    from utilities.llm_client import AnthropicClient, get_global_tracker
+    from utilities.llm_client import get_global_tracker
+    from utilities.llm_factory import create_llm_client
     from utilities.context_enhancer import ContextEnhancer
 
     tracker = get_global_tracker()
-    client = AnthropicClient(model=model_id, tracker=tracker)
+    client = create_llm_client(provider=llm_provider, model=model_id, tracker=tracker, **llm_config)
     enhancer = ContextEnhancer(client=client, tracker=tracker)
 
     # Load dataset

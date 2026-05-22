@@ -42,6 +42,8 @@ def run_verification(
     workers: int = 8,
     checkpoint_path: str | None = None,
     backoff_seconds: int = 30,
+    llm_provider: str = "anthropic",
+    llm_config: dict | None = None,
 ) -> VerifyResult:
     """Run Stage 2 attacker-simulation verification on Stage 1 results.
 
@@ -63,6 +65,8 @@ def run_verification(
             from output_dir.
         workers: Number of parallel workers (default: 8).
         backoff_seconds: Seconds to wait on rate limit before retry (default: 30).
+        llm_provider: "anthropic" (default) or "google" for Vertex AI/Gemini.
+        llm_config: Additional config dict for provider (e.g., project_id for Google).
 
     Returns:
         VerifyResult with paths, counts, and usage info.
@@ -72,6 +76,8 @@ def run_verification(
     # Configure global rate limiter
     from utilities.rate_limiter import configure_rate_limiter
     configure_rate_limiter(backoff_seconds=float(backoff_seconds))
+
+    llm_config = llm_config or {}
 
     # Set up checkpoint
     if checkpoint_path is None:
@@ -132,8 +138,21 @@ def run_verification(
 
     # Run Stage 2 verification via verify_batch
     tracker = get_global_tracker()
+    
+    # For Stage 2 verification, we need Claude's tool use capabilities
+    # If using Google, we'll still use Anthropic for verification as Gemini tool calling
+    # is different and would require custom implementation
+    if llm_provider == "google":
+        print(f"[Verify] WARNING: Using Anthropic Claude for Stage 2 (Google provider tool calling differs)", file=sys.stderr)
+        from utilities.llm_client import AnthropicClient
+        verify_client = AnthropicClient(model="claude-opus-4-20250514", tracker=tracker)
+    else:
+        from utilities.llm_factory import create_llm_client
+        verify_client = create_llm_client(provider=llm_provider, model="claude-opus-4-20250514", tracker=tracker, **llm_config)
+    
     verifier = FindingVerifier(
         index=index,
+        client=verify_client,
         tracker=tracker,
         verbose=False,
         app_context=app_context,

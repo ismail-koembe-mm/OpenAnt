@@ -62,6 +62,8 @@ def scan_repository(
     diff_manifest: str | None = None,
     llm_reachability: bool = False,
     llm_reachability_max_code_bytes: int = 1500,
+    llm_provider: str = "anthropic",
+    llm_config: dict | None = None,
 ) -> ScanResult:
     """Scan a repository for vulnerabilities.
 
@@ -371,6 +373,8 @@ def scan_repository(
                 mode=enhance_mode,
                 workers=workers,
                 backoff_seconds=backoff_seconds,
+                llm_provider=llm_provider,
+                llm_config=llm_config or {},
                 # checkpoint_path auto-derived from output_path
             )
 
@@ -421,6 +425,8 @@ def scan_repository(
             model=model,
             workers=workers,
             backoff_seconds=backoff_seconds,
+            llm_provider=llm_provider,
+            llm_config=llm_config or {},
         )
 
         ctx.summary = {
@@ -470,6 +476,8 @@ def scan_repository(
                 repo_path=repo_path,
                 workers=workers,
                 backoff_seconds=backoff_seconds,
+                llm_provider=llm_provider,
+                llm_config=llm_config or {},
             )
 
             ctx.summary = {

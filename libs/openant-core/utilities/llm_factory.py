@@ -67,10 +67,17 @@ def create_llm_client(
         return AnthropicClient(model=model, **kwargs)
 
     elif provider == "google" or provider == LLMProvider.GOOGLE.value:
+        import os
         from utilities.gemini_client import GoogleVertexClient
         
         if model is None:
             model = "gemini-2.5-flash"
+        
+        # Check environment to determine SDK (genai vs Vertex AI)
+        # GOOGLE_GENAI_USE_VERTEXAI=True means use Vertex AI SDK
+        # GOOGLE_GENAI_USE_VERTEXAI=False/unset means use genai SDK
+        use_vertex_ai = os.getenv("GOOGLE_GENAI_USE_VERTEXAI", "false").lower() == "true"
+        kwargs.setdefault("use_genai", not use_vertex_ai)
         
         return GoogleVertexClient(model=model, **kwargs)
 

@@ -29,7 +29,7 @@ import html
 import os
 from datetime import datetime
 
-import anthropic
+from utilities.llm_factory import create_llm_client
 from dotenv import load_dotenv
 from utilities.file_io import read_json
 
@@ -197,18 +197,11 @@ Format your response as HTML (use <h3>, <p>, <ul>, <li>, <strong> tags). Do not 
 {findings_text}
 """
 
-    api_key = os.getenv("ANTHROPIC_API_KEY")
-    if not api_key:
-        raise ValueError("ANTHROPIC_API_KEY not found in environment")
-
-    client = anthropic.Anthropic(api_key=api_key)
-    response = client.messages.create(
-        model=REPORT_MODEL,
-        max_tokens=MAX_TOKENS,
-        messages=[{"role": "user", "content": prompt}]
-    )
-
-    return response.content[0].text
+    llm_provider = os.getenv("OPENANT_LLM_PROVIDER", "anthropic")
+    llm_model = os.getenv("OPENANT_LLM_MODEL", REPORT_MODEL)
+    client = create_llm_client(provider=llm_provider, model=llm_model)
+    result = client.analyze_sync(prompt, max_tokens=MAX_TOKENS)
+    return result
 
 
 def _build_pipeline_costs_html(step_reports: list[dict]) -> str:
@@ -323,7 +316,7 @@ def generate_html_report(
             'verdict': verdict,
             'priority': get_verdict_priority(verdict),
             'color': get_verdict_color(verdict),
-            'attack_vector': html.escape(result.get('attack_vector', '') or ''),
+            'attack_vector': html.escape(str(result.get('attack_vector', '') or '')),
             'description': html.escape(llm_context.get('reasoning', '')[:200] if llm_context.get('reasoning') else ''),
             'justification': html.escape(verification.get('explanation', '')[:300] if verification.get('explanation') else result.get('reasoning', '')[:300])
         })
@@ -564,10 +557,10 @@ def generate_html_report(
         }}
 
         .truncate {{
-            max-width: 400px;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
+            max-width: 300px;
+            white-space: normal;
+            word-wrap: break-word;
+            overflow-wrap: break-word;
         }}
 
         .remediation {{

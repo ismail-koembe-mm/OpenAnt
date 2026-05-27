@@ -23,6 +23,10 @@ Usage:
 import os
 import threading
 from typing import Optional
+
+# Force pure Python protobuf implementation for Python 3.14 compatibility
+os.environ.setdefault("PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION", "python")
+
 from dotenv import load_dotenv
 
 from .rate_limiter import get_rate_limiter
@@ -246,9 +250,6 @@ class GoogleVertexClient:
 
             aiplatform.init(project=project_id, location=location)
 
-            from google.cloud.aiplatform.gapic.services.prediction_service import (
-                PredictionServiceClient,
-            )
 
             self.project_id = project_id
             self.location = location
@@ -350,43 +351,28 @@ class GoogleVertexClient:
     def _call_vertex_ai(self, prompt: str, max_tokens: int, system: str = None) -> dict:
         """Call Vertex AI Generative API."""
         try:
-            import google.cloud.aiplatform as aiplatform
-            from google.cloud.aiplatform.gapic.types import (
-                content as content_types,
-            )
+            import vertexai
+            from vertexai.generative_models import GenerativeModel, GenerationConfig
         except ImportError:
-            raise ImportError("google-cloud-aiplatform not installed")
-
-        # Initialize if not already done
-        aiplatform.init(project=self.project_id, location=self.location)
-
-        # Create GenerativeModel
-        model = aiplatform.GenerativeModel(self.model)
-
-        # Build contents with system prompt if provided
+            raise ImportError("vertexai is required. Install with: pip install google-cloud-aiplatform")
+        vertexai.init(project=self.project_id, location=self.location)
+        model = GenerativeModel(self.model)
         if system:
             full_prompt = f"{system}\n\n{prompt}"
         else:
             full_prompt = prompt
-
-        # Call API
         response = model.generate_content(
             [full_prompt],
-            generation_config=aiplatform.types.GenerationConfig(max_output_tokens=max_tokens),
-            stream=False,
+            generation_config=GenerationConfig(max_output_tokens=max_tokens),
         )
-
-        # Extract token counts
         usage_metadata = response.usage_metadata if hasattr(response, 'usage_metadata') else None
         input_tokens = usage_metadata.prompt_token_count if usage_metadata else 0
         output_tokens = usage_metadata.candidates_token_count if usage_metadata else 0
-
         return {
             "text": response.text,
             "input_tokens": input_tokens,
             "output_tokens": output_tokens,
         }
-
     def get_last_call(self) -> Optional[dict]:
         """
         Get details of the last API call.

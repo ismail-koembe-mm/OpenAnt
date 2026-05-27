@@ -8,7 +8,7 @@ import json
 import os
 import re
 import sys
-import anthropic
+from utilities.llm_factory import create_llm_client
 from pathlib import Path
 from dotenv import load_dotenv
 
@@ -54,9 +54,9 @@ def _merge_usage(usages: list[dict]) -> dict:
     return merged
 
 
-def _check_api_key():
-    """Check that ANTHROPIC_API_KEY is set."""
-    if not os.environ.get("ANTHROPIC_API_KEY"):
+def _check_api_key(provider: str = "anthropic"):
+    """Check that required API key is set for the given provider."""
+    if provider == "anthropic" and not os.environ.get("ANTHROPIC_API_KEY"):
         print("Error: ANTHROPIC_API_KEY environment variable not set.", file=sys.stderr)
         print("Set it with: export ANTHROPIC_API_KEY=sk-ant-...", file=sys.stderr)
         sys.exit(1)
@@ -130,30 +130,16 @@ def _compact_for_summary(pipeline_data: dict) -> dict:
     return compact
 
 
-def generate_summary_report(pipeline_data: dict) -> tuple[str, dict]:
-    """Generate a summary report from pipeline data.
-
-    Returns:
-        (report_text, usage_dict) where usage_dict has input_tokens,
-        output_tokens, total_tokens, cost_usd.
-    """
-    _check_api_key()
-    client = anthropic.Anthropic()
-
+def generate_summary_report(pipeline_data: dict, llm_provider: str = "anthropic", llm_model: str = None) -> tuple[str, dict]:
+    _check_api_key(llm_provider)
+    model = llm_model or MODEL
+    client = create_llm_client(provider=llm_provider, model=model)
     summary_data = _compact_for_summary(pipeline_data)
     system_prompt = load_prompt("system")
     user_prompt = load_prompt("summary").replace("{pipeline_data}", json.dumps(summary_data, indent=2))
-
-    response = client.messages.create(
-        model=MODEL,
-        max_tokens=4096,
-        system=system_prompt,
-        messages=[{"role": "user", "content": user_prompt}]
-    )
-
-    return response.content[0].text, _extract_usage(response)
-
-
+    result = client.analyze_sync(user_prompt, max_tokens=4096, system=system_prompt)
+    usage = {"input_tokens": 0, "output_tokens": 0, "total_tokens": 0, "cost_usd": 0.0}
+    return result, usage
 def _splice_code_section(llm_output: str, code_section: str) -> str:
     """Insert the verbatim code block into the LLM-generated disclosure.
 
@@ -194,14 +180,15 @@ def _splice_code_section(llm_output: str, code_section: str) -> str:
     return output
 
 
-def generate_disclosure(vulnerability_data: dict, product_name: str) -> tuple[str, dict]:
+def generate_disclosure(vulnerability_data: dict, product_name: str, llm_provider: str = "anthropic", llm_model: str = None) -> tuple[str, dict]:
     """Generate a disclosure document for a single vulnerability.
 
     Returns:
         (disclosure_text, usage_dict)
     """
-    _check_api_key()
-    client = anthropic.Anthropic()
+    _check_api_key(llm_provider)
+    model = llm_model or MODEL
+    client = create_llm_client(provider=llm_provider, model=model)
 
     system_prompt = load_prompt("system")
 
@@ -220,17 +207,13 @@ def generate_disclosure(vulnerability_data: dict, product_name: str) -> tuple[st
         .replace("{vulnerability_data}", json.dumps(payload, indent=2), 1)
     )
 
-    response = client.messages.create(
-        model=MODEL,
-        max_tokens=4096,
-        system=system_prompt,
-        messages=[{"role": "user", "content": user_prompt}]
-    )
+    result = client.analyze_sync(user_prompt, max_tokens=4096, system=system_prompt)
 
-    llm_output = response.content[0].text
+    llm_output = result
     final_output = _splice_code_section(llm_output, code_section)
 
-    return final_output, _extract_usage(response)
+    usage = {"input_tokens": 0, "output_tokens": 0, "total_tokens": 0, "cost_usd": 0.0}
+    return final_output, usage
 
 
 def generate_all(pipeline_path: str, output_dir: str) -> None:

@@ -79,6 +79,8 @@ def cmd_scan(args):
             llm_reachability_max_code_bytes=getattr(
                 args, "llm_reachability_max_code_bytes", 1500
             ),
+            llm_provider=getattr(args, "llm_provider", "anthropic"),
+            llm_config=json.loads(getattr(args, "llm_config", "{}")) if getattr(args, "llm_config", None) else None,
         )
 
         scan_payload = result.to_dict()
@@ -234,6 +236,7 @@ def cmd_analyze(args):
             "model": args.model,
             "exploitable_filter": exploitable_filter,
             "limit": args.limit,
+            "llm_provider": args.llm_provider,
         }) as ctx:
             result = run_analysis(
                 dataset_path=args.dataset,
@@ -247,6 +250,8 @@ def cmd_analyze(args):
                 workers=args.workers,
                 checkpoint_path=getattr(args, "checkpoint", None),
                 backoff_seconds=args.backoff,
+                llm_provider=args.llm_provider,
+                llm_config=getattr(args, "llm_config", None),
             )
 
             ctx.summary = {
@@ -284,6 +289,8 @@ def cmd_analyze(args):
                         repo_path=args.repo_path,
                         workers=args.workers,
                         backoff_seconds=args.backoff,
+                        llm_provider=args.llm_provider,
+                        llm_config=getattr(args, "llm_config", None),
                     )
 
                     vctx.summary = {
@@ -983,7 +990,7 @@ def main():
                         help="Enable Docker-isolated dynamic testing (off by default)")
     scan_p.add_argument("--no-skip-tests", action="store_true", help="Include test files in parsing (default: tests are skipped)")
     scan_p.add_argument("--limit", type=int, help="Max units to analyze")
-    scan_p.add_argument("--model", choices=["opus", "sonnet"], default="opus", help="Model (default: opus)")
+    scan_p.add_argument("--model", default="opus", help="Model (default: opus for Anthropic, gemini-2.5-flash for Google)")
     scan_p.add_argument("--workers", type=int, default=8,
                         help="Number of parallel workers for LLM steps (default: 8)")
     scan_p.add_argument("--repo-name", help="Repository name (org/repo)")
@@ -1015,6 +1022,8 @@ def main():
              "generated code, at proportional Opus cost increase. Only "
              "meaningful with --llm-reachability.",
     )
+    scan_p.add_argument("--llm-provider", default="anthropic", help="LLM provider: anthropic or google")
+    scan_p.add_argument("--llm-config", help="Provider-specific config as JSON")
     scan_p.set_defaults(func=cmd_scan)
 
     # ---------------------------------------------------------------
@@ -1077,12 +1086,14 @@ def main():
                                help="Analyze units classified as exploitable or vulnerable_internal (safer, compensates for parser gaps)")
     exploit_group.add_argument("--exploitable-only", action="store_true",
                                help="Analyze only units classified as exploitable (strict, use after parser entry point fixes)")
-    analyze_p.add_argument("--model", choices=["opus", "sonnet"], default="opus", help="Model (default: opus)")
+    analyze_p.add_argument("--model", default="opus", help="Model (default: opus for Anthropic, gemini-2.5-flash for Google)")
     analyze_p.add_argument("--workers", type=int, default=8,
                            help="Number of parallel workers for LLM calls (default: 8)")
     analyze_p.add_argument("--checkpoint", help="Path to checkpoint directory for save/resume")
     analyze_p.add_argument("--backoff", type=int, default=30,
                            help="Seconds to wait when rate-limited (default: 30)")
+    analyze_p.add_argument("--llm-provider", default="anthropic", help="LLM provider: anthropic or google")
+    analyze_p.add_argument("--llm-config", help="Provider-specific config as JSON")
     analyze_p.set_defaults(func=cmd_analyze)
 
     # ---------------------------------------------------------------

@@ -72,6 +72,15 @@ func requireAPIKey() string {
 	return "" // unreachable
 }
 
+// resolveAPIKeyForProvider returns the API key if using Anthropic provider,
+// or an empty string for Google provider (which uses Application Default Credentials).
+func resolveAPIKeyForProvider(provider string) string {
+	if provider == "google" {
+		return ""
+	}
+	return requireAPIKey()
+}
+
 func init() {
 	rootCmd.PersistentFlags().BoolVar(&jsonOutput, "json", false, "Output raw JSON (machine-readable)")
 	rootCmd.PersistentFlags().BoolVarP(&quiet, "quiet", "q", false, "Suppress progress output")

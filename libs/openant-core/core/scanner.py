@@ -373,6 +373,7 @@ def scan_repository(
                 mode=enhance_mode,
                 workers=workers,
                 backoff_seconds=backoff_seconds,
+                model=model,
                 llm_provider=llm_provider,
                 llm_config=llm_config or {},
                 # checkpoint_path auto-derived from output_path
@@ -623,7 +624,7 @@ def scan_repository(
             outputs = {}
 
             try:
-                generate_summary_report(pipeline_output_path, summary_path)
+                generate_summary_report(pipeline_output_path, summary_path, llm_provider=llm_provider, llm_model=model)
                 result.summary_path = summary_path
                 outputs["summary_path"] = summary_path
                 print(f"  Summary: {summary_path}", file=sys.stderr)
@@ -634,13 +635,37 @@ def scan_repository(
             # Only generate disclosures if there are findings
             if has_findings:
                 try:
-                    generate_disclosure_docs(pipeline_output_path, disclosures_dir)
+                    generate_disclosure_docs(pipeline_output_path, disclosures_dir, llm_provider=llm_provider, llm_model=model)
                     outputs["disclosures_dir"] = disclosures_dir
                     print(f"  Disclosures: {disclosures_dir}", file=sys.stderr)
                 except Exception as e:
                     print(f"  WARNING: Disclosure docs failed: {e}", file=sys.stderr)
                     ctx.errors.append(f"Disclosure docs: {e}")
 
+            # Generate HTML report
+            try:
+                import subprocess as _subprocess
+                import sys as _sys
+                html_path = os.path.join(report_dir, "report.html")
+                results_json = os.path.join(output_dir, "results.json")
+                dataset_json = os.path.join(output_dir, "dataset.json")
+                core_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+                generate_report_script = os.path.join(core_root, "generate_report.py")
+                if os.path.exists(results_json) and os.path.exists(dataset_json) and os.path.exists(generate_report_script):
+                    env = dict(os.environ)
+                    env["PYTHONPATH"] = core_root
+                    result_proc = _subprocess.run(
+                        [_sys.executable, generate_report_script, results_json, dataset_json, html_path,
+                         "--step-reports-dir", output_dir],
+                        capture_output=True, text=True, env=env
+                    )
+                    if result_proc.returncode == 0:
+                        outputs["html_path"] = html_path
+                        print(f"  HTML report: {html_path}", file=sys.stderr)
+                    else:
+                        print(f"  WARNING: HTML report failed: {result_proc.stderr[-300:]}", file=sys.stderr)
+            except Exception as e:
+                print(f"  WARNING: HTML report failed: {e}", file=sys.stderr)
             ctx.summary = {"formats_generated": list(outputs.keys())}
             ctx.outputs = outputs
 

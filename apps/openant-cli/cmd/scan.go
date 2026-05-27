@@ -33,26 +33,28 @@ A final scan.report.json aggregates all step reports.`,
 }
 
 var (
-	scanOutput      string
-	scanLanguage    string
-	scanLevel       string
-	scanVerify      bool
-	scanNoContext   bool
-	scanNoEnhance   bool
-	scanEnhanceMode string
-	scanNoReport        bool
-	scanSkipDynamicTest bool
-	scanLimit           int
-	scanModel       string
-	scanWorkers     int
-	scanBackoff     int
-	scanFull        bool
-	scanIncremental bool
-	scanDiffBase    string
-	scanPR          int
-	scanDiffScope   string
+	scanOutput                      string
+	scanLanguage                    string
+	scanLevel                       string
+	scanVerify                      bool
+	scanNoContext                   bool
+	scanNoEnhance                   bool
+	scanEnhanceMode                 string
+	scanNoReport                    bool
+	scanSkipDynamicTest             bool
+	scanLimit                       int
+	scanModel                       string
+	scanWorkers                     int
+	scanBackoff                     int
+	scanFull                        bool
+	scanIncremental                 bool
+	scanDiffBase                    string
+	scanPR                          int
+	scanDiffScope                   string
 	scanLLMReachability             bool
 	scanLLMReachabilityMaxCodeBytes int
+	scanLLMProvider                 string
+	scanLLMConfig                   string
 )
 
 func init() {
@@ -73,7 +75,7 @@ func registerScanFlags(cmd *cobra.Command) {
 	cmd.Flags().BoolVar(&scanNoReport, "no-report", false, "Skip report generation")
 	cmd.Flags().BoolVar(&scanSkipDynamicTest, "skip-dynamic-test", false, "Skip Docker-isolated dynamic testing (default: run dynamic tests)")
 	cmd.Flags().IntVar(&scanLimit, "limit", 0, "Max units to analyze (0 = no limit)")
-	cmd.Flags().StringVar(&scanModel, "model", "opus", "Model: opus or sonnet")
+	cmd.Flags().StringVar(&scanModel, "model", "opus", "Model: opus or sonnet (for Anthropic); gemini-2.5-flash, etc. (for Google)")
 	cmd.Flags().IntVar(&scanWorkers, "workers", 8, "Number of parallel workers for LLM steps (default: 8)")
 	cmd.Flags().IntVar(&scanBackoff, "backoff", 30, "Seconds to wait when rate-limited (default: 30)")
 	cmd.Flags().BoolVar(&scanFull, "full", false, "Force full scan (rejects --incremental/--diff-base/--pr)")
@@ -83,6 +85,8 @@ func registerScanFlags(cmd *cobra.Command) {
 	cmd.Flags().StringVar(&scanDiffScope, "diff-scope", "changed_functions", "Diff scope: changed_files, changed_functions, callers")
 	cmd.Flags().BoolVar(&scanLLMReachability, "llm-reachability", false, "Enable the LLM reachability review stage (Opus). Surfaces entry points and external-input sites the structural pass would miss by reviewing the full codebase before the reachability filter is applied. Off by default — enabling this incurs cost proportional to total repo size, not the filtered unit count (~one Opus call per 25 units across the whole codebase).")
 	cmd.Flags().IntVar(&scanLLMReachabilityMaxCodeBytes, "llm-reachability-max-code-bytes", 1500, "Max code bytes per unit sent to the LLM reachability stage (default: 1500). Higher values (e.g. 4096, 8192) catch entry-point indicators past byte 1500 in long handlers / generated code, at proportional Opus cost increase. Only meaningful with --llm-reachability.")
+	cmd.Flags().StringVar(&scanLLMProvider, "llm-provider", "anthropic", "LLM provider: anthropic or google")
+	cmd.Flags().StringVar(&scanLLMConfig, "llm-config", "", "Provider-specific config as JSON")
 }
 
 func runScan(cmd *cobra.Command, args []string) {
@@ -207,6 +211,12 @@ func runScan(cmd *cobra.Command, args []string) {
 	if scanLLMReachabilityMaxCodeBytes != 1500 {
 		pyArgs = append(pyArgs, "--llm-reachability-max-code-bytes", fmt.Sprintf("%d", scanLLMReachabilityMaxCodeBytes))
 	}
+	if scanLLMProvider != "anthropic" {
+		pyArgs = append(pyArgs, "--llm-provider", scanLLMProvider)
+	}
+	if scanLLMConfig != "" {
+		pyArgs = append(pyArgs, "--llm-config", scanLLMConfig)
+	}
 
 	// Pass repository metadata from project context so reports don't show
 	// [NOT PROVIDED] placeholders.
@@ -222,7 +232,7 @@ func runScan(cmd *cobra.Command, args []string) {
 		}
 	}
 
-	result, err := python.Invoke(rt.Path, pyArgs, "", quiet, requireAPIKey())
+	result, err := python.Invoke(rt.Path, pyArgs, "", quiet, resolveAPIKeyForProvider(scanLLMProvider))
 	if err != nil {
 		finalizeScanMetaIfProject(ctx, config.ScanStatusFailed)
 		output.PrintError(err.Error())

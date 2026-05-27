@@ -22,6 +22,7 @@ Usage:
 """
 
 import json
+import os
 import re
 import sys
 from dataclasses import dataclass, asdict, field
@@ -29,7 +30,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Any
 
-from anthropic import Anthropic
+from utilities.llm_factory import create_llm_client
 from dotenv import load_dotenv
 from utilities.file_io import open_utf8, read_json, write_json
 
@@ -509,18 +510,12 @@ def generate_application_context(
 
     # Call LLM
     print(f"Generating context with {model}...", file=sys.stderr)
-    client = Anthropic()
-    response = client.messages.create(
-        model=model,
-        max_tokens=2000,
-        messages=[{
-            "role": "user",
-            "content": CONTEXT_GENERATION_PROMPT.format(sources=sources_text)
-        }]
-    )
-
-    # Parse response
-    response_text = response.content[0].text
+    llm_provider = os.environ.get("OPENANT_LLM_PROVIDER", "anthropic")
+    llm_model = os.environ.get("OPENANT_LLM_MODEL", model)
+    client = create_llm_client(provider=llm_provider, model=llm_model)
+    prompt = CONTEXT_GENERATION_PROMPT.replace("{sources}", sources_text)
+    result = client.analyze_sync(prompt, max_tokens=4000)
+    response_text = result
 
     # Extract JSON from response
     json_match = re.search(r'```json\s*(.*?)\s*```', response_text, re.DOTALL)

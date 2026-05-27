@@ -35,6 +35,8 @@ var (
 	analyzeWorkers        int
 	analyzeCheckpoint     string
 	analyzeBackoff        int
+	analyzeLLMProvider    string
+	analyzeLLMConfig      string
 )
 
 func init() {
@@ -45,10 +47,12 @@ func init() {
 	analyzeCmd.Flags().StringVar(&analyzeRepoPath, "repo-path", "", "Path to the repository (for context correction)")
 	analyzeCmd.Flags().BoolVar(&analyzeExploitOnly, "exploitable-only", false, "Only analyze units classified as exploitable by enhancer")
 	analyzeCmd.Flags().IntVar(&analyzeLimit, "limit", 0, "Max units to analyze (0 = no limit)")
-	analyzeCmd.Flags().StringVar(&analyzeModel, "model", "opus", "Model: opus or sonnet")
+	analyzeCmd.Flags().StringVar(&analyzeModel, "model", "opus", "Model: opus or sonnet (for Anthropic); gemini-2.5-flash, etc. (for Google)")
 	analyzeCmd.Flags().IntVar(&analyzeWorkers, "workers", 8, "Number of parallel workers for LLM steps (default: 8)")
 	analyzeCmd.Flags().StringVar(&analyzeCheckpoint, "checkpoint", "", "Path to checkpoint directory for save/resume")
 	analyzeCmd.Flags().IntVar(&analyzeBackoff, "backoff", 30, "Seconds to wait when rate-limited (default: 30)")
+	analyzeCmd.Flags().StringVar(&analyzeLLMProvider, "llm-provider", "anthropic", "LLM provider: anthropic or google")
+	analyzeCmd.Flags().StringVar(&analyzeLLMConfig, "llm-config", "", "Provider-specific config as JSON (e.g., '{\"project_id\": \"my-project\"}')")
 }
 
 func runAnalyze(cmd *cobra.Command, args []string) {
@@ -123,8 +127,14 @@ func runAnalyze(cmd *cobra.Command, args []string) {
 	if analyzeBackoff != 30 {
 		pyArgs = append(pyArgs, "--backoff", fmt.Sprintf("%d", analyzeBackoff))
 	}
+	if analyzeLLMProvider != "anthropic" {
+		pyArgs = append(pyArgs, "--llm-provider", analyzeLLMProvider)
+	}
+	if analyzeLLMConfig != "" {
+		pyArgs = append(pyArgs, "--llm-config", analyzeLLMConfig)
+	}
 
-	result, err := python.Invoke(rt.Path, pyArgs, "", quiet, requireAPIKey())
+	result, err := python.Invoke(rt.Path, pyArgs, "", quiet, resolveAPIKeyForProvider(analyzeLLMProvider))
 	if err != nil {
 		output.PrintError(err.Error())
 		os.Exit(2)

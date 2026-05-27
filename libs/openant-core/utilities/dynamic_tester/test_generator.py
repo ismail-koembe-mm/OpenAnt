@@ -14,7 +14,8 @@ import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-from utilities.llm_client import AnthropicClient, TokenTracker
+from utilities.llm_client import TokenTracker
+from utilities.llm_factory import create_llm_client
 
 SONNET_MODEL = "claude-sonnet-4-20250514"
 
@@ -225,7 +226,9 @@ def generate_test(
         None if generation fails.
     """
     tracker = tracker or TokenTracker()
-    client = AnthropicClient(model=SONNET_MODEL, tracker=tracker)
+    llm_provider = os.environ.get("OPENANT_LLM_PROVIDER", "anthropic")
+    llm_model = os.environ.get("OPENANT_LLM_MODEL", SONNET_MODEL)
+    client = create_llm_client(provider=llm_provider, model=llm_model, tracker=tracker)
 
     prompt = _build_finding_prompt(finding, repo_info)
     raw = client.analyze_sync(prompt, max_tokens=8192, system=SYSTEM_PROMPT)
@@ -262,7 +265,9 @@ def regenerate_test(
         New generation dict, or None if regeneration fails.
     """
     tracker = tracker or TokenTracker()
-    client = AnthropicClient(model=SONNET_MODEL, tracker=tracker)
+    llm_provider = os.environ.get("OPENANT_LLM_PROVIDER", "anthropic")
+    llm_model = os.environ.get("OPENANT_LLM_MODEL", SONNET_MODEL)
+    client = create_llm_client(provider=llm_provider, model=llm_model, tracker=tracker)
 
     original_prompt = _build_finding_prompt(finding, repo_info)
 

@@ -567,7 +567,7 @@ class ContextEnhancer:
         remaining = total - len(processed_ids)
         self._log("info", f"Enhancing {remaining} units with agentic analysis ({len(processed_ids)} already done)", units=remaining)
         self._log("info", "Mode: Iterative tool use (traces call paths)")
-        self._log("info", "Model: claude-sonnet-4-20250514")
+        self._log("info", f"Model: {__import__('os').environ.get('OPENANT_LLM_MODEL', 'claude-sonnet-4-20250514')}")
         mode = "sequential" if workers <= 1 else f"parallel ({workers} workers)"
         self._log("info", f"Workers: {mode}")
         if checkpoint_dir:
@@ -579,12 +579,17 @@ class ContextEnhancer:
         stats = index.get_statistics()
         self._log("info", f"Indexed {stats['total_functions']} functions from {stats['total_files']} files")
 
-        # Create a single shared Anthropic client for all workers.
-        # Each ContextAgent previously created its own anthropic.Anthropic() instance,
-        # which spawns a new httpx connection pool. With 1000+ units and 8 workers,
-        # this exhausted file descriptors (macOS limit ~256). The httpx.Client
-        # underlying anthropic.Anthropic is thread-safe, so sharing is correct.
-        shared_client = anthropic.Anthropic(max_retries=5)
+        # Create a single shared client for all workers.
+        import os as _os
+        _llm_provider = _os.environ.get("OPENANT_LLM_PROVIDER", "anthropic")
+        if _llm_provider == "google":
+            from utilities.llm_factory import create_llm_client
+            from utilities.agentic_enhancer.agent_gemini import enhance_unit_with_agent as _gemini_enhance
+            shared_client = create_llm_client(provider="google", model=_os.environ.get("OPENANT_LLM_MODEL", "gemini-2.5-flash"), tracker=self.tracker)
+            _use_gemini = True
+        else:
+            shared_client = anthropic.Anthropic(max_retries=5)
+            _use_gemini = False
 
         # Filter to unprocessed units
         units_to_process = [(i, unit) for i, unit in enumerate(units) if unit.get("id") not in processed_ids]
@@ -595,7 +600,10 @@ class ContextEnhancer:
             unit_start = time.monotonic()
             classification = "neutral"
             try:
-                enhance_unit_with_agent(unit, index, self.tracker, verbose, client=shared_client)
+                if _use_gemini:
+                    _gemini_enhance(unit, index, self.tracker, verbose, client=shared_client)
+                else:
+                    enhance_unit_with_agent(unit, index, self.tracker, verbose, client=shared_client)
 
                 agent_ctx = unit.get("agent_context", {})
                 classification = agent_ctx.get("security_classification", "neutral")

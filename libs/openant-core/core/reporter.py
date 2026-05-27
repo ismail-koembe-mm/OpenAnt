@@ -273,7 +273,8 @@ def build_pipeline_output(
         if not steps_to_reproduce:
             parts = []
             if finding.get("attack_vector"):
-                parts.append(finding["attack_vector"])
+                av = finding["attack_vector"]
+                parts.append(av if isinstance(av, str) else str(av))
             exploit_path = finding.get("exploit_path") or {}
             if exploit_path.get("data_flow"):
                 parts.append("Data flow: " + " -> ".join(exploit_path["data_flow"]))
@@ -445,6 +446,8 @@ def generate_csv_report(
 def generate_summary_report(
     results_path: str,
     output_path: str,
+    llm_provider: str = "anthropic",
+    llm_model: str = None,
 ) -> ReportResult:
     """Generate LLM-based summary report (Markdown).
 
@@ -472,7 +475,7 @@ def generate_summary_report(
     except ValidationError as e:
         raise RuntimeError(f"Invalid pipeline output: {e}")
 
-    report_text, usage = _generate_summary(pipeline_data)
+    report_text, usage = _generate_summary(pipeline_data, llm_provider=llm_provider, llm_model=llm_model)
 
     os.makedirs(os.path.dirname(os.path.abspath(output_path)), exist_ok=True)
     with open_utf8(output_path, "w") as f:
@@ -490,6 +493,8 @@ def generate_summary_report(
 def generate_disclosure_docs(
     results_path: str,
     output_dir: str,
+    llm_provider: str = "anthropic",
+    llm_model: str = None,
 ) -> ReportResult:
     """Generate per-vulnerability disclosure documents.
 
@@ -538,7 +543,7 @@ def generate_disclosure_docs(
 
         def _one(args):
             i, finding = args
-            disclosure_text, usage = _generate_disclosure(finding, product_name)
+            disclosure_text, usage = _generate_disclosure(finding, product_name, llm_provider=llm_provider, llm_model=llm_model)
             safe_name = finding["short_name"].replace(" ", "_").upper()
             filename = f"DISCLOSURE_{i:02d}_{safe_name}.md"
             filepath = os.path.join(output_dir, filename)
